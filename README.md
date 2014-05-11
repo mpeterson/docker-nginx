@@ -42,7 +42,7 @@ The idea was to have a container that only contained nginx and not a full stack 
 
 ## Configuration
 Configuration options are set by setting environment variables when running the image. This options should be passed to the container using docker
-```-e <variable>```. What follows it a table of the supported variables:
+```-e <variable>```. What follows is a table of the supported variables:
 
 Variable     | Function
 ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------
