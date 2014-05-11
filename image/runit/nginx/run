@@ -1,0 +1,58 @@
+#!/bin/bash
+if [[ ! "$(ls -A $DATA_DIR)" ]]; then
+    cp -a /var/.www.orig/. $DATA_DIR 2>/dev/null || :
+    chown www-data:www-data /var/www/.
+fi
+
+if [[ ! "$(ls -A /etc/nginx/sites-enabled)" ]]; then
+    cp -a /etc/nginx/.sites-enabled.orig/. /etc/nginx/sites-enabled 2>/dev/null || :
+fi
+
+CONF_FILE=/etc/nginx/nginx.conf
+
+# Hack to be able to use docker variables in nginx configurations
+if [ ! -d /etc/nginx/sites-enabled-modified ]; then
+    mkdir /etc/nginx/sites-enabled-modified
+    sed -i 's|.*include /etc/nginx/sites-enabled/\*;$| \
+	# Hack to be able to use docker variables in nginx configurations \
+	include /etc/nginx/sites-enabled-modified/*;|g' $CONF_FILE
+fi
+rm -rf /etc/nginx/sites-enabled-modified/*
+cp -a /etc/nginx/sites-enabled/. /etc/nginx/sites-enabled-modified
+
+function replaceEnvironmentVariable() {
+    grep -rl "\$ENV{\"$1\"}" /etc/nginx/sites-enabled-modified/|xargs \
+        sed -i "s|\\\$ENV{\"$1\"}|$2|g"
+}
+
+# Make docker env variables available from within nginx
+# Function to update the nginx configuration to make the service environment variables available
+function setEnvironmentVariable() {
+
+    if [ -z "$2" ]; then
+            echo "Environment variable '$1' not set."
+            return
+    fi
+
+    # Check whether variable already exists
+    if grep -q $1 $CONF_FILE; then
+        # Reset variable
+        sed -i "s/^env $1;\$/env $1;/g" $CONF_FILE
+    else
+        # Add variable
+        echo "env $1;" >> $CONF_FILE
+    fi
+}
+
+# Clean all docker env variables
+sed -i "/^env.*_PORT_.*;$/d" $CONF_FILE 
+
+# Grep for variables that look like docker set them (_PORT_)
+for _curVar in `env | grep _PORT_ | awk -F = '{print $1}'`;do
+    # awk has split them by the equals sign
+    # Pass the name and value to our function
+    setEnvironmentVariable ${_curVar} ${!_curVar}
+    replaceEnvironmentVariable ${_curVar} ${!_curVar}
+done
+
+/usr/sbin/nginx
